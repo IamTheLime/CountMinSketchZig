@@ -2,19 +2,24 @@ const std = @import("std");
 const Allocator = @import("std").mem.Allocator;
 
 const CountMinSketchCell = struct {
-    elements: std.BufSet,
-    count_distinct: u32,
+    //It will hold all occurrences for the cell,
+    //we can hash an elemente again to see occurences
+    //of a certain event
+    occurrences: u32,
 };
 
-fn CountMinSketch(comptime hash_count: u8, comptime buckets: u16) type {
+fn CountMinSketch(comptime IdentifierProducingT: type, comptime hash_count: u8, comptime buckets: u16) type {
+    if (!std.meta.hasMethod(IdentifierProducingT, "get_id")) {
+        @compileError("Cannot create CountMinSketch on an item that is unable to return identifier");
+    }
+
     return struct {
-        allocator: Allocator,
         hashes: [hash_count]std.hash.XxHash3,
         mtx: [hash_count][buckets]CountMinSketchCell,
 
         const Self = @This();
 
-        fn init(allocator: Allocator) Self {
+        fn init() Self {
             var hash_list: [hash_count]std.hash.XxHash3 = undefined;
             var i: u8 = 0;
             while (i < hash_list.len) {
@@ -27,38 +32,44 @@ fn CountMinSketch(comptime hash_count: u8, comptime buckets: u16) type {
             while (i < mtx.len) {
                 j = 0;
                 while (j < mtx[i].len) {
-                    mtx[i][j].count_distinct = 0;
-                    mtx[i][j].elements = std.BufSet.init(allocator);
+                    mtx[i][j].occurrences = 0;
                     j += 1;
                 }
                 i += 1;
             }
 
             return .{
-                .allocator = allocator,
                 .hashes = hash_list,
                 .mtx = mtx,
             };
         }
 
-        fn deinit(self: *Self) void {
-            for (self.mtx) |row| {
-                for (row) |val| {
-                    self.allocator.destroy(val.elements);
-                }
+        fn register_occurence(self: *Self, x: IdentifierProducingT) void {
+            var i = 0;
+            var j = 0;
+            while (i < self.mtx.len) {
+                j = self.hashes[i].hash(i, x.get_id()) % buckets;
+                self.mtx[i][j].occurrences += 1;
+
+                i += 1;
             }
         }
     };
 }
 
+const Whatever = struct {
+    value: u32,
+
+    const Self = @This();
+
+    fn get_id(self: *Self) u32 {
+        self.value;
+    }
+};
+
 test "Count min sketch test" {
     // std.log.warn("here", .{});
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
 
-    var cms = CountMinSketch(3, 16).init(allocator);
-    defer cms.deinit();
-
-    // std.log.warn("This is cms: {any}", .{cms});
+    const cms = CountMinSketch(Whatever, 3, 16).init();
+    std.log.warn("This is cms: {any}", .{cms});
 }
