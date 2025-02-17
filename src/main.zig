@@ -8,9 +8,33 @@ const CountMinSketchCell = struct {
     occurrences: u32,
 };
 
+const S1 = struct {
+    value: u32,
+
+    const Self = @This();
+
+    pub fn get_id(self: *Self) u32 {
+        return self.value;
+    }
+};
+
 fn CountMinSketch(comptime IdentifierProducingT: type, comptime hash_count: u8, comptime buckets: u16) type {
+
+    // Checking that the struct S1 implements all the required parameters
+    // TODO: move this into an auxiliary function, potentially comptime utils?
     if (!std.meta.hasMethod(IdentifierProducingT, "get_id")) {
         @compileError("Cannot create CountMinSketch on an item that is unable to return identifier");
+    }
+    const func = IdentifierProducingT.get_id;
+    const FuncType = @TypeOf(func);
+    const func_info = @typeInfo(FuncType);
+
+    const return_type = func_info.Fn.return_type orelse {
+        @compileError("get_id must have a return type");
+    };
+
+    if (return_type != u32) {
+        @compileError("get_id must return u32, found '" ++ @typeName(return_type) ++ "'");
     }
 
     return struct {
@@ -57,19 +81,7 @@ fn CountMinSketch(comptime IdentifierProducingT: type, comptime hash_count: u8, 
     };
 }
 
-const Whatever = struct {
-    value: u32,
-
-    const Self = @This();
-
-    fn get_id(self: *Self) u32 {
-        self.value;
-    }
-};
-
 test "Count min sketch test" {
-    // std.log.warn("here", .{});
-
-    const cms = CountMinSketch(Whatever, 3, 16).init();
+    const cms = CountMinSketch(S1, 3, 16).init();
     std.log.warn("This is cms: {any}", .{cms});
 }
