@@ -13,7 +13,7 @@ const S1 = struct {
 
     const Self = @This();
 
-    pub fn get_id(self: *Self) u32 {
+    pub fn get_id(self: Self) u32 {
         return self.value;
     }
 };
@@ -38,21 +38,15 @@ fn CountMinSketch(comptime IdentifierProducingT: type, comptime hash_count: u8, 
     }
 
     return struct {
-        hashes: [hash_count]std.hash.XxHash3,
         mtx: [hash_count][buckets]CountMinSketchCell,
 
         const Self = @This();
+        const Hash = std.hash.XxHash3;
 
         fn init() Self {
-            var hash_list: [hash_count]std.hash.XxHash3 = undefined;
             var i: u8 = 0;
-            while (i < hash_list.len) {
-                hash_list[i] = std.hash.XxHash3.init(i);
-                i += 1;
-            }
-
-            var mtx: [hash_count][buckets]CountMinSketchCell = undefined;
             var j: u16 = 0;
+            var mtx: [hash_count][buckets]CountMinSketchCell = undefined;
             while (i < mtx.len) {
                 j = 0;
                 while (j < mtx[i].len) {
@@ -63,18 +57,27 @@ fn CountMinSketch(comptime IdentifierProducingT: type, comptime hash_count: u8, 
             }
 
             return .{
-                .hashes = hash_list,
                 .mtx = mtx,
             };
         }
 
         fn register_occurence(self: *Self, x: IdentifierProducingT) void {
-            var i = 0;
-            var j = 0;
+            var i: u8 = 0;
+            var j: u16 = 0;
             while (i < self.mtx.len) {
-                j = self.hashes[i].hash(i, x.get_id()) % buckets;
+                j = @as(u16, @intCast(Hash.hash(i, std.mem.asBytes(&x.get_id())) % buckets));
                 self.mtx[i][j].occurrences += 1;
+                i += 1;
+            }
+        }
 
+        fn get_element_count(self: *Self, x: IdentifierProducingT) void {
+            var i: u8 = 0;
+            var j: u16 = 0;
+            while (i < self.mtx.len) {
+                j = @as(u16, @intCast(Hash.hash(i, std.mem.asBytes(&x.get_id())) % buckets));
+                const occurences = self.mtx[i][j].occurrences;
+                std.log.warn("I found occurrence {any}", .{occurences});
                 i += 1;
             }
         }
@@ -82,6 +85,23 @@ fn CountMinSketch(comptime IdentifierProducingT: type, comptime hash_count: u8, 
 }
 
 test "Count min sketch test" {
-    const cms = CountMinSketch(S1, 3, 16).init();
-    std.log.warn("This is cms: {any}", .{cms});
+    var cms = CountMinSketch(S1, 3, 16).init();
+    const whatever = S1{ .value = 33 };
+    const whatever1 = S1{ .value = 33 };
+    const whatever2 = S1{ .value = 33 };
+    const whatever3 = S1{ .value = 33 };
+    const whatever4 = S1{ .value = 33 };
+    const whatever5 = S1{ .value = 34 };
+    const whatever6 = S1{ .value = 33 };
+    const whatever7 = S1{ .value = 36 };
+    cms.register_occurence(whatever);
+    cms.register_occurence(whatever1);
+    cms.register_occurence(whatever2);
+    cms.register_occurence(whatever3);
+    cms.register_occurence(whatever4);
+    cms.register_occurence(whatever5);
+    cms.register_occurence(whatever6);
+    cms.register_occurence(whatever7);
+    std.log.warn("Getting occurrences", .{});
+    cms.get_element_count(whatever);
 }
